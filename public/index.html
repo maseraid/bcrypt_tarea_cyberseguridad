@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login con bcrypt</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, #1e3a8a, #6d28d9);
+      padding: 16px;
+    }
+    .tarjeta {
+      width: 100%;
+      max-width: 380px;
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, .25);
+      overflow: hidden;
+    }
+    .pestanas { display: flex; }
+    .pestanas button {
+      flex: 1;
+      padding: 14px;
+      border: none;
+      background: #f1f5f9;
+      font-size: 15px;
+      font-weight: 600;
+      color: #64748b;
+      cursor: pointer;
+    }
+    .pestanas button.activa { background: #fff; color: #4338ca; border-bottom: 3px solid #4338ca; }
+    form, .bienvenida { padding: 28px; display: flex; flex-direction: column; gap: 14px; }
+    h2 { color: #1e293b; font-size: 22px; }
+    label { font-size: 14px; color: #475569; display: flex; flex-direction: column; gap: 6px; }
+    input {
+      padding: 11px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 15px;
+    }
+    input:focus { outline: 2px solid #6366f1; border-color: transparent; }
+    .btn {
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      background: #4338ca;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn:hover { background: #3730a3; }
+    .btn:disabled { opacity: .6; cursor: wait; }
+    .mensaje { min-height: 20px; font-size: 14px; text-align: center; }
+    .mensaje.ok { color: #15803d; }
+    .mensaje.error { color: #b91c1c; }
+    .oculto { display: none; }
+    .bienvenida { text-align: center; }
+    .bienvenida p { color: #475569; }
+  </style>
+</head>
+<body>
+  <main class="tarjeta">
+    <div class="pestanas" id="pestanas">
+      <button type="button" class="activa" data-vista="login">Iniciar sesión</button>
+      <button type="button" data-vista="registro">Registrarse</button>
+    </div>
+
+    <form id="login">
+      <h2>Iniciar sesión</h2>
+      <label>Usuario <input name="usuario" required autocomplete="username"></label>
+      <label>Clave <input name="clave" type="password" required autocomplete="current-password"></label>
+      <button class="btn" type="submit">Entrar</button>
+      <p class="mensaje"></p>
+    </form>
+
+    <form id="registro" class="oculto">
+      <h2>Crear cuenta</h2>
+      <label>Usuario <input name="usuario" required minlength="3" autocomplete="username"></label>
+      <label>Clave <input name="clave" type="password" required minlength="6" autocomplete="new-password"></label>
+      <label>Confirmar clave <input name="confirmar" type="password" required minlength="6" autocomplete="new-password"></label>
+      <button class="btn" type="submit">Registrar</button>
+      <p class="mensaje"></p>
+    </form>
+
+    <section id="bienvenida" class="bienvenida oculto">
+      <h2 id="saludo"></h2>
+      <p>Has iniciado sesión correctamente.</p>
+      <button class="btn" id="salir" type="button">Cerrar sesión</button>
+    </section>
+  </main>
+
+  <script>
+    const pestanas = document.getElementById('pestanas');
+    const formLogin = document.getElementById('login');
+    const formRegistro = document.getElementById('registro');
+    const bienvenida = document.getElementById('bienvenida');
+
+    function mostrar(vista) {
+      formLogin.classList.toggle('oculto', vista !== 'login');
+      formRegistro.classList.toggle('oculto', vista !== 'registro');
+      bienvenida.classList.toggle('oculto', vista !== 'bienvenida');
+      pestanas.classList.toggle('oculto', vista === 'bienvenida');
+      pestanas.querySelectorAll('button').forEach((b) =>
+        b.classList.toggle('activa', b.dataset.vista === vista));
+      document.querySelectorAll('.mensaje').forEach((m) => { m.textContent = ''; m.className = 'mensaje'; });
+    }
+
+    pestanas.addEventListener('click', (e) => {
+      if (e.target.dataset.vista) mostrar(e.target.dataset.vista);
+    });
+
+    function setMensaje(form, texto, ok) {
+      const p = form.querySelector('.mensaje');
+      p.textContent = texto;
+      p.className = 'mensaje ' + (ok ? 'ok' : 'error');
+    }
+
+    async function enviar(url, datos) {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(datos),
+      });
+      return resp.json();
+    }
+
+    formRegistro.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const { usuario, clave, confirmar } = Object.fromEntries(new FormData(formRegistro));
+      if (clave !== confirmar) return setMensaje(formRegistro, 'Las claves no coinciden', false);
+
+      const btn = formRegistro.querySelector('button');
+      btn.disabled = true;
+      try {
+        const r = await enviar('/api/registro', { usuario, clave });
+        setMensaje(formRegistro, r.mensaje, r.ok);
+        if (r.ok) formRegistro.reset();
+      } catch {
+        setMensaje(formRegistro, 'Error de conexión con el servidor', false);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    formLogin.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const { usuario, clave } = Object.fromEntries(new FormData(formLogin));
+
+      const btn = formLogin.querySelector('button');
+      btn.disabled = true;
+      try {
+        const r = await enviar('/api/login', { usuario, clave });
+        if (r.ok) {
+          document.getElementById('saludo').textContent = r.mensaje;
+          formLogin.reset();
+          mostrar('bienvenida');
+        } else {
+          setMensaje(formLogin, r.mensaje, false);
+        }
+      } catch {
+        setMensaje(formLogin, 'Error de conexión con el servidor', false);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById('salir').addEventListener('click', () => mostrar('login'));
+  </script>
+</body>
+</html>
